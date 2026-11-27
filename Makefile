@@ -1,8 +1,8 @@
-CC = gcc
-GO = go
-RUSTC = rustc
-NODE = node
-PHP = php
+CC ?= gcc
+GO ?= go
+RUSTC ?= rustc
+NODE ?= node
+PHP ?= php
 # Vacio: run_all_checks.sh detecta "python3" o "python" segun el sistema.
 PYTHON ?=
 
