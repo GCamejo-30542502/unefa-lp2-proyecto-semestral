@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package unefa.billing.bss.v1;
+
+option go_package = "unefa-lp2/lab5/gen/billing/bss/v1;bssv1";
+
+// ConvergentBillingService expone el cobro de sesiones de datos 5G y el
+// streaming de telemetria de celdas. Todos los importes financieros viajan
+// como int64 en centavos para evitar errores de punto flotante.
+service ConvergentBillingService {
+  // Unary RPC de ultra baja latencia: autoriza y cobra una sesion de datos.
+  rpc AuthorizeAndChargeDataSession(AuthorizeAndChargeDataSessionRequest)
+      returns (AuthorizeAndChargeDataSessionResponse);
+
+  // Server-Side Streaming RPC: el servidor empuja eventos de telemetria.
+  rpc StreamCellTelemetryEvents(StreamCellTelemetryEventsRequest)
+      returns (stream CellTelemetryEvent);
+}
+
+enum EstadoCargo {
+  ESTADO_CARGO_NO_ESPECIFICADO = 0;
+  ESTADO_CARGO_AUTORIZADO = 1;
+  ESTADO_CARGO_RECHAZADO = 2;
+}
+
+message AuthorizeAndChargeDataSessionRequest {
+  // Etiqueta 1: obligatoria y barata de codificar (Varint de 1 byte).
+  string idempotency_key = 1;
+  string msisdn = 2;
+  string cell_id = 3;
+  int64 monto_centavos = 4;
+  string moneda = 5;
+  int64 duracion_segundos = 6;
+}
+
+message AuthorizeAndChargeDataSessionResponse {
+  string transaction_id = 1;
+  string idempotency_key = 2;
+  EstadoCargo estado = 3;
+  int64 monto_cobrado_centavos = 4;
+  string moneda = 5;
+  int64 saldo_restante_centavos = 6;
+  string mensaje = 7;
+}
+
+message StreamCellTelemetryEventsRequest {
+  // Etiqueta 1: obligatoria para que el servidor deduplique la suscripcion.
+  string idempotency_key = 1;
+  string msisdn = 2;
+  string cell_id = 3;
+  int64 desde_unix_ms = 4;
+}
+
+message CellTelemetryEvent {
+  string event_id = 1;
+  string cell_id = 2;
+  string msisdn = 3;
+  int64 timestamp_unix_ms = 4;
+  int64 latency_ms = 5;
+  int64 packet_loss_basis_points = 6;
+  int64 throughput_kbps = 7;
+}
