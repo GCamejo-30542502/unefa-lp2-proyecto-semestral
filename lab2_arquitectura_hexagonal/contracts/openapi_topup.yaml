@@ -1,0 +1,180 @@
+openapi: 3.1.0
+info:
+  title: Pasarela de Recarga TelCo/FinTech
+  version: 1.0.0
+  description: API de recargas con protección contra cobros dobles mediante Idempotency-Key.
+
+paths:
+  /v1/topups:
+    post:
+      summary: Crear una recarga
+      description: >
+        POST no es idempotente por naturaleza (RFC 7231). Por eso exige la cabecera
+        Idempotency-Key: si el cliente reintenta con la misma clave, el servidor
+        devuelve la transacción original sin volver a cobrar.
+      operationId: crearRecarga
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudRecarga'
+      responses:
+        '201':
+          description: Recarga creada por primera vez.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recarga'
+        '200':
+          description: La Idempotency-Key ya fue procesada; se devuelve la transacción original.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recarga'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/EntidadNoProcesable'
+
+  /v1/topups/{transaction_id}:
+    parameters:
+      - $ref: '#/components/parameters/TransactionId'
+    put:
+      summary: Crear o reemplazar una recarga por su ID
+      description: >
+        PUT es idempotente por naturaleza (RFC 7231): ejecutarlo varias veces con
+        el mismo cuerpo deja el sistema en el mismo estado.
+      operationId: reemplazarRecarga
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudRecarga'
+      responses:
+        '200':
+          description: Recarga existente reemplazada o repetida sin efectos adicionales.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recarga'
+        '201':
+          description: Recarga creada con el ID indicado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recarga'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/EntidadNoProcesable'
+    get:
+      summary: Consultar una recarga
+      operationId: consultarRecarga
+      responses:
+        '200':
+          description: Recarga encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recarga'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/EntidadNoProcesable'
+
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID v4 único por intento de negocio.
+      schema:
+        type: string
+        format: uuid
+        pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        example: 11111111-1111-4111-8111-111111111111
+    TransactionId:
+      name: transaction_id
+      in: path
+      required: true
+      description: Identificador de la transacción.
+      schema:
+        type: string
+        example: tx-1
+
+  schemas:
+    SolicitudRecarga:
+      type: object
+      required: [msisdn, monto_centavos]
+      properties:
+        msisdn:
+          type: string
+          description: Número en formato internacional ITU-T E.164.
+          pattern: '^\+[1-9]\d{6,14}$'
+          example: '+573001234567'
+        monto_centavos:
+          type: integer
+          format: int64
+          minimum: 100
+          description: Monto en centavos enteros (nunca decimales).
+          example: 5000
+    Recarga:
+      type: object
+      required: [id, msisdn, monto_centavos, estado]
+      properties:
+        id:
+          type: string
+          example: tx-1
+        msisdn:
+          type: string
+          example: '+573001234567'
+        monto_centavos:
+          type: integer
+          format: int64
+          minimum: 100
+        estado:
+          type: string
+          enum: [PENDIENTE, APROBADA, RECHAZADA]
+    Error:
+      type: object
+      required: [codigo, mensaje]
+      properties:
+        codigo:
+          type: string
+          example: MSISDN_INVALIDO
+        mensaje:
+          type: string
+          example: El msisdn viola el estándar ITU-T E.164.
+
+  responses:
+    SolicitudInvalida:
+      description: 400 - La solicitud está mal formada (por ejemplo, falta o es inválida la Idempotency-Key).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflicto:
+      description: 409 Conflict - La Idempotency-Key ya se usó con un cuerpo distinto, o hay otra solicitud en curso con esa clave.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    EntidadNoProcesable:
+      description: 422 - El formato es correcto pero viola reglas de negocio (msisdn fuera de E.164 o monto menor a 100).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
